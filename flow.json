@@ -1,0 +1,381 @@
+[
+    {
+        "id": "1431e0628b4154bc",
+        "type": "tab",
+        "label": "WWFF + ParksnPeaks -> APRS-IS (raw TCP)",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "7c13562ea09c7f95",
+        "type": "inject",
+        "z": "1431e0628b4154bc",
+        "name": "Refresh WWFF location cache (startup + 12h)",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "43200",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.5,
+        "payloadType": "date",
+        "x": 230,
+        "y": 80,
+        "wires": [
+            [
+                "72dabcf46c54892c"
+            ]
+        ]
+    },
+    {
+        "id": "72dabcf46c54892c",
+        "type": "http request",
+        "z": "1431e0628b4154bc",
+        "name": "GET parksnpeaks.org/api/SITES/WWFF",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "https://parksnpeaks.org/api/SITES/WWFF",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "keyType": "other",
+                "keyValue": "Accept",
+                "valueType": "other",
+                "valueValue": "application/json"
+            }
+        ],
+        "x": 600,
+        "y": 80,
+        "wires": [
+            [
+                "b8a369ab6bfdf4c7"
+            ]
+        ]
+    },
+    {
+        "id": "b8a369ab6bfdf4c7",
+        "type": "json",
+        "z": "1431e0628b4154bc",
+        "name": "Parse JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 890,
+        "y": 80,
+        "wires": [
+            [
+                "77733f49ef6c2a8b"
+            ]
+        ]
+    },
+    {
+        "id": "77733f49ef6c2a8b",
+        "type": "function",
+        "z": "1431e0628b4154bc",
+        "name": "Build global.wwff_loc map",
+        "func": "const arr = msg.payload;\nif (!Array.isArray(arr) || arr.length === 0) return null;\n\nfunction canonRef(ref) {\n  return String(ref || \"\").trim().toUpperCase().replace(/[^A-Z0-9]/g, \"\");\n}\n\nconst m = {};\nfor (const r of arr) {\n  const rawId = String(r.ID || \"\").trim();\n  const id = canonRef(rawId);\n  const lat = Number(r.Latitude);\n  const lon = Number(r.Longitude);\n  const name = String(r.Name || \"\").trim();\n\n  if (!id) continue;\n  if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;\n\n  m[id] = { lat, lon, name, rawId };\n}\n\nglobal.set(\"wwff_loc\", m);\n\nnode.status({\n  fill: \"green\",\n  shape: \"dot\",\n  text: `WWFF loc cached: ${Object.keys(m).length}`\n});\n\nreturn null;\n",
+        "outputs": 0,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1140,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "eb25e0087a12e786",
+        "type": "inject",
+        "z": "1431e0628b4154bc",
+        "name": "Poll WWFF (spots.wwff.co) every 30s",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "30",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 1,
+        "payloadType": "date",
+        "x": 240,
+        "y": 160,
+        "wires": [
+            [
+                "ed5654e32b9b3d4a"
+            ]
+        ]
+    },
+    {
+        "id": "ed5654e32b9b3d4a",
+        "type": "http request",
+        "z": "1431e0628b4154bc",
+        "name": "GET https://spots.wwff.co/static/spots.json",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "https://spots.wwff.co/static/spots.json",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "keyType": "other",
+                "keyValue": "Accept",
+                "valueType": "other",
+                "valueValue": "application/json"
+            }
+        ],
+        "x": 590,
+        "y": 160,
+        "wires": [
+            [
+                "a4adf07ec650cba3"
+            ]
+        ]
+    },
+    {
+        "id": "a4adf07ec650cba3",
+        "type": "json",
+        "z": "1431e0628b4154bc",
+        "name": "Parse JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 890,
+        "y": 160,
+        "wires": [
+            [
+                "6ebdf70661f8c1b0"
+            ]
+        ]
+    },
+    {
+        "id": "6ebdf70661f8c1b0",
+        "type": "function",
+        "z": "1431e0628b4154bc",
+        "name": "Normalise WWFF spots feed",
+        "func": "const spots = msg.payload;\nif (!Array.isArray(spots) || spots.length === 0) return null;\n\nconst out = [];\nfor (const s of spots) {\n  if (!s) continue;\n  const ref = String(s.reference || \"\").trim().toUpperCase();\n  const activator = String(s.activator || \"\").trim().toUpperCase();\n  const mode = String(s.mode || \"\").trim().toUpperCase();\n  const freq = Number(s.frequency_khz);\n  const lat = Number(s.latitude);\n  const lon = Number(s.longitude);\n  const t = Number(s.spot_time);\n  const refName = String(s.reference_name || \"\").trim();\n  const remarks = String(s.remarks || \"\").trim();\n\n  if (!ref || !Number.isFinite(t)) continue;\n\n  out.push({\n    source: \"wwff\",\n    id: Number(s.id) || t,\n    reference: ref,\n    reference_name: refName,\n    activator,\n    mode,\n    frequency_khz: Number.isFinite(freq) ? freq : null,\n    latitude: Number.isFinite(lat) ? lat : null,\n    longitude: Number.isFinite(lon) ? lon : null,\n    spot_time: t,\n    remarks\n  });\n}\n\nreturn out.length ? [{ payload: out }] : null;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1140,
+        "y": 160,
+        "wires": [
+            [
+                "964ad64aa86919c6"
+            ]
+        ]
+    },
+    {
+        "id": "47b1cdcbddaa801c",
+        "type": "inject",
+        "z": "1431e0628b4154bc",
+        "name": "Poll ParksnPeaks WWFF every 30s",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "30",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 1.5,
+        "payloadType": "date",
+        "x": 230,
+        "y": 220,
+        "wires": [
+            [
+                "4c21b97fa9e29698"
+            ]
+        ]
+    },
+    {
+        "id": "4c21b97fa9e29698",
+        "type": "http request",
+        "z": "1431e0628b4154bc",
+        "name": "GET https://parksnpeaks.org/api/WWFF",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "https://parksnpeaks.org/api/WWFF",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "authType": "",
+        "senderr": false,
+        "headers": [
+            {
+                "keyType": "other",
+                "keyValue": "Accept",
+                "valueType": "other",
+                "valueValue": "application/json"
+            }
+        ],
+        "x": 530,
+        "y": 220,
+        "wires": [
+            [
+                "eb445d15efa5e51e"
+            ]
+        ]
+    },
+    {
+        "id": "eb445d15efa5e51e",
+        "type": "json",
+        "z": "1431e0628b4154bc",
+        "name": "Parse JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 890,
+        "y": 220,
+        "wires": [
+            [
+                "2e8bc94a6e8e199e"
+            ]
+        ]
+    },
+    {
+        "id": "2e8bc94a6e8e199e",
+        "type": "function",
+        "z": "1431e0628b4154bc",
+        "name": "Normalise ParksnPeaks WWFF feed",
+        "func": "const arr = msg.payload;\nif (!Array.isArray(arr) || arr.length === 0) return null;\n\nconst out = [];\nfor (const r of arr) {\n  if (!r) continue;\n  const ref = String(r.WWFFid || r.actSite || r.actLocation || \"\").trim().toUpperCase();\n  const activator = String(r.actCallsign || \"\").trim().toUpperCase();\n  const mode = String(r.actMode || r.mode || \"\").trim().toUpperCase();\n  const freqMHz = Number(r.actFreq || r.freq);\n  const freq_khz = Number.isFinite(freqMHz) ? Math.round(freqMHz * 1000) : null;\n\n  const tStr = String(r.actTime || \"\").trim();\n  let spot_time = null;\n  if (tStr) {\n    const d = new Date(tStr.replace(' ', 'T') + 'Z');\n    if (!isNaN(d.getTime())) spot_time = Math.floor(d.getTime() / 1000);\n  }\n  if (!spot_time) {\n    const idNum = Number(r.actID);\n    spot_time = Number.isFinite(idNum) ? idNum : Math.floor(Date.now() / 1000);\n  }\n\n  const remarks = String(r.actComments || r.remarks || \"\").trim();\n  const refName = String(r.actLocation || r.reference_name || \"\").trim();\n\n  if (!ref) continue;\n\n  out.push({\n    source: \"parksnpeaks\",\n    id: String(r.actID || spot_time),\n    reference: ref,\n    reference_name: refName,\n    activator,\n    mode,\n    frequency_khz: freq_khz,\n    latitude: null,\n    longitude: null,\n    spot_time,\n    remarks\n  });\n}\n\nreturn out.length ? [{ payload: out }] : null;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1170,
+        "y": 220,
+        "wires": [
+            [
+                "964ad64aa86919c6"
+            ]
+        ]
+    },
+    {
+        "id": "964ad64aa86919c6",
+        "type": "function",
+        "z": "1431e0628b4154bc",
+        "name": "Merge + fill lat/lon + global dedupe",
+        "func": "const items = msg.payload;\nif (!Array.isArray(items) || items.length === 0) return null;\n\nconst loc = global.get(\"wwff_loc\") || {};\n\nconst DEDUPE_WINDOW = 5 * 60;\nconst nowSec = Math.floor(Date.now() / 1000);\n\nlet seen = context.get(\"seen\") || {};\n\nfunction clean(s) {\n  return String(s || \"\").trim().replace(/\\s+/g, \" \");\n}\n\nfunction canonRef(ref) {\n  return String(ref || \"\").trim().toUpperCase().replace(/[^A-Z0-9]/g, \"\");\n}\n\nfunction makeKey(it) {\n  const refKey = canonRef(it.reference);\n  const act = clean(it.activator).toUpperCase();\n  const mode = clean(it.mode).toUpperCase();\n  const f = it.frequency_khz ? String(it.frequency_khz) : \"\";\n  const bucket = Math.floor(Number(it.spot_time || nowSec) / 120);\n  return `${refKey}|${act}|${mode}|${f}|${bucket}`;\n}\n\nfor (const k of Object.keys(seen)) {\n  if ((nowSec - seen[k]) > (DEDUPE_WINDOW * 3)) delete seen[k];\n}\n\nconst out = [];\nfor (const it of items) {\n  const refRaw = clean(it.reference);\n  const refKey = canonRef(refRaw);\n  if (!refKey) continue;\n\n  let lat = Number(it.latitude);\n  let lon = Number(it.longitude);\n\n  if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) < 0.0001 && Math.abs(lon) < 0.0001) {\n    lat = NaN;\n    lon = NaN;\n  }\n\n  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {\n    const rec = loc[refKey];\n    if (rec && Number.isFinite(rec.lat) && Number.isFinite(rec.lon)) {\n      lat = rec.lat;\n      lon = rec.lon;\n      it.reference_name = clean(it.reference_name) || clean(rec.name);\n    }\n  }\n\n  if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;\n\n  it.reference = refRaw;\n  it.reference_key = refKey;\n  it.latitude = lat;\n  it.longitude = lon;\n\n  const key = makeKey(it);\n  const last = seen[key] || 0;\n  if ((nowSec - last) < DEDUPE_WINDOW) continue;\n\n  seen[key] = nowSec;\n  out.push(it);\n}\n\ncontext.set(\"seen\", seen);\n\nreturn out.length ? out.map(x => ({ payload: x })) : null;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 340,
+        "y": 320,
+        "wires": [
+            [
+                "504dcfb88727ae06"
+            ]
+        ]
+    },
+    {
+        "id": "504dcfb88727ae06",
+        "type": "function",
+        "z": "1431e0628b4154bc",
+        "name": "Build raw APRS object packet",
+        "func": "const APRS_CALLSIGN = \"YOUR_CALLSIGN\";\n\nconst SYMBOL_TABLE = \"\\\\\";\nconst SYMBOL_CODE  = \";\";\n\nconst MIN_TX_INTERVAL = 10 * 60;\n\nfunction clean(s) {\n  return String(s || \"\").trim().replace(/\\s+/g, \" \");\n}\n\nfunction canonRef(ref) {\n  return String(ref || \"\").trim().toUpperCase().replace(/[^A-Z0-9]/g, \"\");\n}\n\nfunction objName9(ref) {\n  const t = canonRef(ref);\n  return (t + \"         \").slice(0, 9);\n}\n\nfunction pad2(n) { return String(n).padStart(2, \"0\"); }\n\nfunction formatLat(lat) {\n  const hemi = lat < 0 ? \"S\" : \"N\";\n  const a = Math.abs(lat);\n  const deg = Math.floor(a);\n  const min = (a - deg) * 60;\n  const mm = Math.floor(min);\n  const hh = Math.floor((min - mm) * 100);\n  return pad2(deg) + pad2(mm) + \".\" + pad2(hh) + hemi;\n}\n\nfunction formatLon(lon) {\n  const hemi = lon < 0 ? \"W\" : \"E\";\n  const a = Math.abs(lon);\n  const deg = Math.floor(a);\n  const min = (a - deg) * 60;\n  const mm = Math.floor(min);\n  const hh = Math.floor((min - mm) * 100);\n  return String(deg).padStart(3, \"0\") + pad2(mm) + \".\" + pad2(hh) + hemi;\n}\n\nfunction zuluStamp(nowSec) {\n  const d = new Date(nowSec * 1000);\n  return pad2(d.getUTCDate()) + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + \"z\";\n}\n\nfunction truncate(s, maxLen) {\n  const t = clean(s);\n  return t.length <= maxLen ? t : t.slice(0, maxLen);\n}\n\nconst s = msg.payload;\nif (!s) return null;\n\nconst refKey = canonRef(s.reference);\nif (!refKey) return null;\n\nlet lat = Number(s.latitude);\nlet lon = Number(s.longitude);\n\nif (!Number.isFinite(lat) || !Number.isFinite(lon) || (Math.abs(lat) < 0.0001 && Math.abs(lon) < 0.0001)) {\n  return null;\n}\n\nconst nowSec = Math.floor(Date.now() / 1000);\nlet tx = context.get(\"tx\") || {};\n\nconst lastTx = tx[refKey] || 0;\nif ((nowSec - lastTx) < MIN_TX_INTERVAL) return null;\n\nconst activator = clean(s.activator).toUpperCase();\nconst mode = clean(s.mode).toUpperCase();\nconst freq = s.frequency_khz ? String(s.frequency_khz) : \"\";\nconst refName = clean(s.reference_name);\n\nlet comment = `${activator} ${freq} ${mode} ${clean(s.reference)}`.trim();\nif (refName) comment += `, ${refName}`;\ncomment = truncate(comment, 70);\n\nconst obj9 = objName9(s.reference);\nconst ts = zuluStamp(nowSec);\nconst latStr = formatLat(lat);\nconst lonStr = formatLon(lon);\n\nconst info = `;${obj9}*${ts}${latStr}${SYMBOL_TABLE}${lonStr}${SYMBOL_CODE}${comment}`;\n\nmsg.payload = `${APRS_CALLSIGN}>APRS,TCPIP*:${info}\\r\\n`;\n\ntx[refKey] = nowSec;\ncontext.set(\"tx\", tx);\n\nnode.status({ fill: \"green\", shape: \"dot\", text: `TX ${refKey}` });\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 410,
+        "y": 400,
+        "wires": [
+            [
+                "f855c3923afd5e85"
+            ]
+        ]
+    },
+    {
+        "id": "f855c3923afd5e85",
+        "type": "tcp out",
+        "z": "1431e0628b4154bc",
+        "name": "APRS-IS TCP OUT rotate.aprs2.net:14580",
+        "host": "rotate.aprs2.net",
+        "port": "14580",
+        "beserver": "client",
+        "base64": false,
+        "end": false,
+        "tls": "",
+        "x": 1090,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "951ca7bfba80faa7",
+        "type": "inject",
+        "z": "1431e0628b4154bc",
+        "name": "Expiry scan every 5 min (kill after 60 min)",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "300",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 10,
+        "payloadType": "date",
+        "x": 250,
+        "y": 520,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "90448f6717965f50",
+        "type": "status",
+        "z": "1431e0628b4154bc",
+        "name": "APRS TCP status",
+        "scope": [
+            "f855c3923afd5e85"
+        ],
+        "x": 760,
+        "y": 640,
+        "wires": [
+            [
+                "67b13e874cb71d7f"
+            ]
+        ]
+    },
+    {
+        "id": "67b13e874cb71d7f",
+        "type": "function",
+        "z": "1431e0628b4154bc",
+        "name": "APRS-IS login on connect",
+        "func": "const APRS_CALLSIGN = \"YOUR_CALLSIGN\";\nconst APRS_PASS = \"YOUR_APRS_PASSCODE\";\nconst APRS_VERS = \"NR-WWFF 1.0\";\nconst APRS_FILTER = \"filter r/0/0/999\";\n\nconst t = (msg.status && msg.status.text) ? String(msg.status.text).toLowerCase() : \"\";\n\nif (t.includes(\"disconnected\")) {\n  context.set(\"sentLogin\", false);\n  return null;\n}\n\nif (!t.includes(\"connected\")) return null;\n\nif (context.get(\"sentLogin\") === true) return null;\ncontext.set(\"sentLogin\", true);\n\nmsg.payload = `user ${APRS_CALLSIGN} pass ${APRS_PASS} vers ${APRS_VERS} ${APRS_FILTER}\\r\\n`;\nreturn msg;\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 730,
+        "y": 320,
+        "wires": [
+            [
+                "f855c3923afd5e85"
+            ]
+        ]
+    }
+]
